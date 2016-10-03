@@ -9,35 +9,40 @@ import psycopg2
 already_bye_player = []
 
 
-def connect():
+def connect(database_name="tournament"):
     """Connect to the PostgreSQL database.  Returns a database connection."""
-    return psycopg2.connect("dbname=tournament")
+    try:
+        db = psycopg2.connect("dbname={}".format(database_name))
+        cursor = db.cursor()
+        return db, cursor
+    except:
+        print("Oops something when wrong! Try again!")
 
 
 def deleteMatches():
     """Remove all the match records from the database."""
-    db = connect()
-    c = db.cursor()
-    c.execute("DELETE FROM matches;")
+    db, cursor = connect()
+    query = "DELETE FROM matches;"
+    cursor.execute(query)
     db.commit()
     db.close()
 
 
 def deletePlayers():
     """Remove all the player records from the database."""
-    db = connect()
-    c = db.cursor()
-    c.execute("DELETE FROM players;")
+    db, cursor = connect()
+    query = "DELETE FROM players;"
+    cursor.execute(query)
     db.commit()
     db.close()
 
 
 def countPlayers():
     """Returns the number of players currently registered."""
-    db = connect()
-    c = db.cursor()
-    c.execute("SELECT count(*) FROM players;")
-    result = c.fetchone()
+    db, cursor = connect()
+    query = "SELECT count(*) FROM players;"
+    cursor.execute(query)
+    result = cursor.fetchone()
     db.close()
     return result[0]
 
@@ -51,9 +56,10 @@ def registerPlayer(name):
     Args:
       name: the player's full name (need not be unique).
     """
-    db = connect()
-    c = db.cursor()
-    c.execute("INSERT INTO players(Name) VALUES (%s);", (name,))
+    db, cursor = connect()
+    query = "INSERT INTO players (name) VALUES (%s);"
+    parameter = (name,)
+    cursor.execute(query, parameter)
     db.commit()
     db.close()
 
@@ -71,9 +77,9 @@ def playerStandings():
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     """
-    db = connect()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM v_standings;")
+    db, cursor = connect()
+    query = "SELECT * FROM v_standings;"
+    cursor.execute(query)
     results = cursor.fetchall()
     db.close()
     return results
@@ -87,11 +93,10 @@ def reportMatch(winner, loser):
       loser:  the id number of the player who lost
     """
 
-    db = connect()
-    c = db.cursor()
-    c.execute(
-        "INSERT INTO matches (winner, loser) \
-         VALUES (%s, %s);", (winner, loser,))
+    db, cursor = connect()
+    query = "INSERT INTO matches (winner, loser) VALUES (%s, %s);"
+    parameter = (winner, loser,)
+    cursor.execute(query, parameter)
     db.commit()
     db.close()
 
@@ -111,38 +116,37 @@ def swissPairings():
         id2: the second player's unique id
         name2: the second player's name
     """
-    db = connect()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM v_standings ORDER BY played DESC;")
-    results = cursor.fetchall()
+    # get a list of the players and their win records
+    players_list = playerStandings()
 
     # declaration of a empty pairing list
     pairings = []
     # count how many rows/players in the standing view
-    count = len(results)
+    count = len(players_list)
 
-    # if not even number of players
+    # if not even number of players a bye game is given to the player with the
+    # least wins
     if count % 2 != 0:
-        # a bye game is given to the player with the least wins
-        bye_player = results.pop()
         # make sure that players does not get more than one bye game in a
         # tournament
-        while bye_player[0] not in already_bye_player:
-            already_bye_player.append(bye_player[0])
-            # Insert the player as a winner in the matches table
-            cursor.execute(
-                "INSERT INTO  matches (winner) VALUES (%s);", (bye_player[0],))
-            db.commit()
-            cursor.execute("SELECT * FROM v_standings ORDER BY played DESC;")
-            results = cursor.fetchall()
-            db.commit()
-            break
+        # to start with the lower ranked player
+        for player in reversed(players_list):
+            if player not in already_bye_player:
+                already_bye_player.append(player)
+                # Insert the player as a winner in the matches table
+                db, cursor = connect()
+                query = "INSERT INTO  matches (winner) VALUES (%s);"
+                parameter = (player[0],)
+                cursor.execute(query, parameter)
+                db.commit()
+                db.close()
+                players_list = playerStandings()
+                break
 
     # populate the list of paired players
     for x in range(0, count - 1, 2):
-        pairing_list = (
-            results[x][0], results[x][1], results[x + 1][0], results[x + 1][1])
+        pairing_list = (players_list[x][0], players_list[x][1],
+                        players_list[x + 1][0], players_list[x + 1][1])
         pairings.append(pairing_list)
 
-    db.close()
     return pairings

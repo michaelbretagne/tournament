@@ -15,10 +15,6 @@ CREATE DATABASE tournament;
 -- Connect to the tournament database
 \c tournament
 
--- Drop all tables and views if they exist
-DROP TABLE IF EXISTS players CASCADE;
-DROP TABLE IF EXISTS matches CASCADE;
-
 CREATE TABLE players(
 	name varchar(100),
     id serial PRIMARY KEY
